@@ -24,6 +24,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
@@ -135,7 +137,7 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, StudentLifecycleAuthorizationManager studentLifecycleAuthorizationManager) throws Exception {
         return http
                 .authorizeHttpRequests(authorizeHttpRequests -> authorizeHttpRequests
                         // Security rules for the /courses/** endpoint.
@@ -201,6 +203,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.PUT, this.baseUrl + "/instructors/courses/{courseId}/default").access(this.courseMembershipAuthorizationManager)
 
                         // Security rules for the /students/** endpoint.
+                        .requestMatchers(HttpMethod.PATCH, this.baseUrl + "/students/{studentId}/deactivation").access(studentLifecycleAuthorizationManager)
                         .requestMatchers(HttpMethod.POST, this.baseUrl + "/students/search").hasAuthority("ROLE_instructor")
                         .requestMatchers(HttpMethod.POST, this.baseUrl + "/students").permitAll()
                         .requestMatchers(HttpMethod.GET, this.baseUrl + "/students/{studentId}").access(this.userOwnershipAuthorizationManager)
@@ -342,8 +345,11 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withPublicKey(this.publicKey).build();
+    public JwtDecoder jwtDecoder(ActiveAccountValidator activeAccountValidator) {
+        NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(this.publicKey).build();
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefault(), activeAccountValidator));
+        return decoder;
     }
 
     @Bean
