@@ -1480,6 +1480,9 @@ Details:
   1. The system checks the actor's authorization under BR-student-lifecycle.
   2. The system leaves the student's account, team membership, and submitted work unchanged and reports "Student is already deactivated."
   3. Use case ends.
+- 5a. The course admin or instructor cancels the confirmation:
+  - 5a1. The system closes the confirmation without deactivating the student or changing team membership or submitted work.
+  - 5a2. Use case ends.
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
 **Business Rules:** BR-student-lifecycle, BR-active-peer-evaluatee, BR-inactive-student-reporting
