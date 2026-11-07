@@ -1473,6 +1473,9 @@ Details:
 7. Use case ends.
 
 **Extensions:**
+- 2a. The actor is not authorized under BR-student-lifecycle:
+  - 2a1. The system denies the action and leaves the student's account, team membership, and submitted work unchanged.
+  - 2a2. Use case ends.
 - 3a. The selected student is already deactivated:
   1. The system checks the actor's authorization under BR-student-lifecycle.
   2. The system leaves the student's account, team membership, and submitted work unchanged and reports "Student is already deactivated."
