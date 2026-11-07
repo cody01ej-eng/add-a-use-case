@@ -76,6 +76,8 @@ class EvaluationEligibilityTest {
                 List.of(new Rating(stored.getRatings().get(0).getCriterion(), 2.0)), "changed", "changed private");
         given(userUtils.getUserId()).willReturn(4);
         given(evaluations.findByPeerEvaluationIdAndEvaluatorId(9, 4)).willReturn(Optional.of(stored));
+        // Only used by the deliberate mutant: a bad write must not hide behind a null mock save.
+        lenient().when(evaluations.save(any(PeerEvaluation.class))).thenAnswer(call -> call.getArgument(0));
         assertThatThrownBy(() -> service.updatePeerEvaluation(9, update))
                 .isInstanceOf(PeerEvaluationIllegalArgumentException.class).hasMessageContaining("inactive");
         assertThat(stored.getPublicComment()).isEqualTo("public");
