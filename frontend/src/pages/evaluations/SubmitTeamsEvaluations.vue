@@ -22,6 +22,7 @@
     <!-- Evaluation Table, adding height can fix the table header -->
     <el-table
       :data="peerEvalutions"
+      data-cy="evaluation-table"
       style="width: 100%"
       stripe
       border
@@ -106,12 +107,14 @@
     <div style="display: flex; justify-content: flex-end">
       <el-button
         type="primary"
-        @click="submitPeerEvaluations"
+        @click="savePeerEvaluations"
+        data-cy="evaluation-save"
+        :disabled="!peerEvalutions?.length"
         v-if="isNewSubmission"
         :loading="isLoading"
         >Submit</el-button
       >
-      <el-button type="warning" @click="updatePeerEvaluations" :loading="isLoading" v-else
+      <el-button type="warning" @click="savePeerEvaluations" data-cy="evaluation-save" :disabled="!peerEvalutions?.length" :loading="isLoading" v-else
         >Update</el-button
       >
     </div>
@@ -120,6 +123,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { prepareEligibleEvaluationRows } from './peerEvaluationRows'
 import { findStudentsByTeamId } from '@/apis/student'
 import type { Student, FindStudentByTeamIdResponse } from '@/apis/student/types'
 import { findSectionById } from '@/apis/section'
@@ -138,9 +142,7 @@ import { ElMessage } from 'element-plus'
 import type {
   FetchPeerEvaluationsResponse,
   PeerEvaluation,
-  Rating,
-  SubmitPeerEvaluationResponse,
-  UpdatePeerEvaluationResponse
+  Rating
 } from '@/apis/evaluation/types'
 
 const previousWeek = ref<string>('')
@@ -150,7 +152,7 @@ const peerEvalutions = ref<PeerEvaluation[]>()
 
 const loading = ref<boolean>(false)
 
-let isNewSubmission = true // Flag to indicate if this is a new submission or an update
+const isNewSubmission = ref(true) // Rows can contain a mix of existing and new evaluations
 
 const teamId = ref<number>(NaN) // Team ID of the student
 
@@ -170,12 +172,15 @@ onMounted(async () => {
     ElMessage.error('You have not been assigned a team yet.')
     return
   }
-  await loadStudents()
-  sectionId.value = (userInfoStore.userInfo as Student).sectionId
-  await loadCriteria()
   loading.value = true
-  prepareStartingPeerEvaluations()
-  loading.value = false
+  try {
+    await loadStudents()
+    sectionId.value = (userInfoStore.userInfo as Student).sectionId
+    await loadCriteria()
+    await prepareStartingPeerEvaluations()
+  } finally {
+    loading.value = false
+  }
 })
 
 // Load activities based on the search criteria
@@ -194,67 +199,55 @@ async function loadCriteria() {
   criteria.value = rubricResult.data.criteria!
 }
 
-// Create starting peer evaluations
-async function prepareStartingPeerEvaluations() {
-  // Get the evaluations for the current week
+// Eligibility is current roster state, including when loading previously saved rows.
+async function prepareStartingPeerEvaluations(preserveDrafts = false) {
+  const drafts = preserveDrafts ? peerEvalutions.value ?? [] : []
   const result: FetchPeerEvaluationsResponse = await getEvaluationsByEvaluatorIdAndWeek(
     (userInfoStore.userInfo as Student).id as number,
     previousWeek.value
   )
-
-  // If the student has already submitted evaluations for the current week, load them
-  if (result.data.length > 0) {
-    peerEvalutions.value = result.data
-    isNewSubmission = false
-  } else {
-    // If not, create a new set of evaluations
-    isNewSubmission = true
-    peerEvalutions.value = students.value.map((student) => ({
-      week: previousWeek.value,
-      evaluatorId: (userInfoStore.userInfo as Student).id as number,
-      evaluateeId: student.id as number,
-      evaluateeName: `${student.firstName} ${student.lastName}`,
-      ratings: criteria.value.map((criterion) => ({
-        criterionId: criterion.criterionId as number,
-        criterion: criterion.criterion,
-        actualScore: 10 // Default score, can be changed by the user
-      })),
-      publicComment: '',
-      privateComment: ''
-    }))
-  }
+  peerEvalutions.value = prepareEligibleEvaluationRows(
+    students.value,
+    result.data,
+    criteria.value,
+    (userInfoStore.userInfo as Student).id as number,
+    previousWeek.value,
+    drafts
+  )
+  isNewSubmission.value = peerEvalutions.value.some((row) => row.evaluationId == null)
 }
 
-// Submit peer evaluations
-async function submitPeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: SubmitPeerEvaluationResponse = await submitEvaluation(evaluation)
-      return result.data
-    })
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    isNewSubmission = false // Change to update mode
-    ElMessage.success('Peer evaluations submitted successfully')
-    isLoading.value = false
-
-    // Send an submission confirmation email to the submitter
-    await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
-    ElMessage.success('A confirmation email has been sent to you.')
-  }
-}
-
-// Update peer evaluations
-async function updatePeerEvaluations() {
-  if (peerEvalutions.value) {
-    const submitPromises = peerEvalutions.value.map(async (evaluation) => {
-      const result: UpdatePeerEvaluationResponse = await updateEvaluation(evaluation)
-      return result.data
-    })
-
-    isLoading.value = true
-    peerEvalutions.value = await Promise.all(submitPromises) // Wait for all promises to resolve
-    ElMessage.success('Peer evaluations updated successfully')
+async function savePeerEvaluations() {
+  if (isLoading.value || !peerEvalutions.value?.length) return
+  isLoading.value = true
+  const hadNewRows = peerEvalutions.value.some((row) => row.evaluationId == null)
+  try {
+    // Existing API calls save individual evaluations, not an atomic whole-team batch.
+    // Wait for every request before refreshing after a partial failure.
+    const outcomes = await Promise.allSettled(peerEvalutions.value.map((evaluation) =>
+      evaluation.evaluationId == null ? submitEvaluation(evaluation) : updateEvaluation(evaluation)
+    ))
+    const failure = outcomes.find((outcome) => outcome.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+    peerEvalutions.value = outcomes.flatMap((outcome) =>
+      outcome.status === 'fulfilled' ? [outcome.value.data] : []
+    )
+    isNewSubmission.value = false
+    ElMessage.success(hadNewRows ? 'Peer evaluations submitted successfully' : 'Peer evaluations updated successfully')
+    if (hadNewRows) {
+      await sendPeerEvaluationSubmissionConfirmationEmail(previousWeekRange.value)
+      ElMessage.success('A confirmation email has been sent to you.')
+    }
+  } catch {
+    // Shared request handling reports the error. Refresh current eligibility and
+    // saved ids while retaining drafts for active members; never offer inactive edits.
+    try {
+      await loadStudents()
+      await prepareStartingPeerEvaluations(true)
+    } catch {
+      // The shared client also reports a failed refresh; finally releases the button.
+    }
+  } finally {
     isLoading.value = false
   }
 }
