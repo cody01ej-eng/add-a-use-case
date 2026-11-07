@@ -3,6 +3,7 @@ package team.projectpulse.evaluation;
 import team.projectpulse.section.Section;
 import team.projectpulse.section.SectionRepository;
 import team.projectpulse.system.WeekKeys;
+import team.projectpulse.system.UserUtils;
 import team.projectpulse.system.exception.PeerEvaluationIllegalArgumentException;
 import team.projectpulse.system.exception.ObjectNotFoundException;
 import team.projectpulse.student.Student;
@@ -38,17 +39,21 @@ public class EvaluationService {
     private final PeerEvaluationRepository evaluationRepository;
     private final StudentRepository studentRepository;
     private final SectionRepository sectionRepository;
+    private final UserUtils userUtils;
     private final Clock clock; // Clock bean is defined in PeerEvaluationToolApplication.java, this object is for unit testing purposes.
 
 
-    public EvaluationService(PeerEvaluationRepository evaluationRepository, StudentRepository studentRepository, SectionRepository sectionRepository, Clock clock) {
+    public EvaluationService(PeerEvaluationRepository evaluationRepository, StudentRepository studentRepository, SectionRepository sectionRepository, Clock clock, UserUtils userUtils) {
         this.evaluationRepository = evaluationRepository;
         this.studentRepository = studentRepository;
         this.sectionRepository = sectionRepository;
         this.clock = clock;
+        this.userUtils = userUtils;
     }
 
     public PeerEvaluation addPeerEvaluation(PeerEvaluation newPeerEvaluation) {
+        Student evaluator = this.userUtils.getStudent();
+        newPeerEvaluation.setEvaluator(evaluator);
         // Make sure the submission week is one of the course section's active weeks and is still open for submission
         requireOpenSubmissionWindow(newPeerEvaluation.getEvaluator().getSection(), newPeerEvaluation.getWeek(), NOT_PREVIOUS_WEEK_MESSAGE);
 
@@ -59,13 +64,15 @@ public class EvaluationService {
             throw new PeerEvaluationIllegalArgumentException("You must be assigned to a team before submitting a peer evaluation.");
         }
 
-        // Make sure the evaluator and evaluatee are on the same team. Compare team ids: Team does not override
-        // equals, so comparing the entities is identity comparison and only happens to hold within one session.
         Integer evaluatorTeamId = evaluatorTeam.getTeamId();
-        Team evaluateeTeam = newPeerEvaluation.getEvaluatee().getTeam();
-        if (evaluatorTeamId == null || evaluateeTeam == null || !evaluatorTeamId.equals(evaluateeTeam.getTeamId())) {
+        if (evaluatorTeamId == null) {
             throw new PeerEvaluationIllegalArgumentException("The evaluator and evaluatee must be on the same team.");
         }
+        Integer evaluateeId = newPeerEvaluation.getEvaluatee().getId();
+        Student evaluatee = this.studentRepository.findByIdAndTeamTeamId(evaluateeId, evaluatorTeamId)
+                .orElseThrow(() -> new ObjectNotFoundException("student", evaluateeId));
+        requireActiveEvaluatee(evaluatee);
+        newPeerEvaluation.setEvaluatee(evaluatee);
 
         // Make sure this is not a duplicate evaluation
         if (this.evaluationRepository.findByWeekAndEvaluatorIdAndEvaluateeId(newPeerEvaluation.getWeek(), newPeerEvaluation.getEvaluator().getId(), newPeerEvaluation.getEvaluatee().getId()).isPresent()) {
@@ -76,8 +83,9 @@ public class EvaluationService {
     }
 
     public PeerEvaluation updatePeerEvaluation(Integer evaluationId, PeerEvaluation update) {
-        return this.evaluationRepository.findById(evaluationId)
+        return this.evaluationRepository.findByPeerEvaluationIdAndEvaluatorId(evaluationId, this.userUtils.getUserId())
                 .map(oldEvaluation -> {
+                    requireActiveEvaluatee(oldEvaluation.getEvaluatee());
                     // The week is read off the stored evaluation rather than off the update, because the caller
                     // writes the payload and could otherwise name an open week to reopen a closed evaluation.
                     requireOpenSubmissionWindow(oldEvaluation.getEvaluator().getSection(), oldEvaluation.getWeek(), WINDOW_CLOSED_MESSAGE);
@@ -87,6 +95,12 @@ public class EvaluationService {
                     return this.evaluationRepository.save(oldEvaluation);
                 })
                 .orElseThrow(() -> new ObjectNotFoundException("evaluation", evaluationId));
+    }
+
+    private void requireActiveEvaluatee(Student evaluatee) {
+        if (!evaluatee.isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException("Peer evaluations cannot be submitted for an inactive student.");
+        }
     }
 
     /**
@@ -174,6 +188,7 @@ public class EvaluationService {
         PeerEvaluationAverage peerEvaluationAverage = new PeerEvaluationAverage();
 
         peerEvaluationAverage.setStudentId(student.getId());
+        peerEvaluationAverage.setEnabled(student.isEnabled());
         peerEvaluationAverage.setWeek(week);
         peerEvaluationAverage.setFirstName(student.getFirstName());
         peerEvaluationAverage.setLastName(student.getLastName());
@@ -218,10 +233,14 @@ public class EvaluationService {
         // Create a new weekly peer evaluation report
         WeeklyPeerEvaluationReport report = new WeeklyPeerEvaluationReport();
 
-        report.setSectionName(this.sectionRepository.findById(sectionId).orElseThrow(() -> new ObjectNotFoundException("section", sectionId)).getSectionName());
+        Section section = this.sectionRepository.findForEvaluationReport(sectionId, this.userUtils.getUserId())
+                .orElseThrow(() -> new ObjectNotFoundException("section", sectionId));
+        report.setSectionName(section.getSectionName());
 
         // Get all students in the section
-        List<Student> students = this.studentRepository.findBySectionSectionId(sectionId).stream().filter(student -> student.getTeam() != null).collect(Collectors.toList());
+        List<Student> students = section.getStudents().stream().filter(student -> student.isEnabled()
+                ? student.getTeam() != null
+                : this.evaluationRepository.existsByWeekAndEvaluateeId(week, student.getId())).collect(Collectors.toList());
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
         students.forEach(student -> {

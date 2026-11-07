@@ -1,6 +1,7 @@
 package team.projectpulse.student;
 
 import team.projectpulse.system.UserUtils;
+import team.projectpulse.course.CourseSecurityService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -19,11 +20,27 @@ public class StudentSecurityService {
 
     private final StudentRepository studentRepository;
     private final UserUtils userUtils;
+    private final CourseSecurityService courseSecurityService;
 
 
-    public StudentSecurityService(StudentRepository studentRepository, UserUtils userUtils) {
+    public StudentSecurityService(StudentRepository studentRepository, UserUtils userUtils, CourseSecurityService courseSecurityService) {
         this.studentRepository = studentRepository;
         this.userUtils = userUtils;
+        this.courseSecurityService = courseSecurityService;
+    }
+
+    public boolean canDeactivateStudent(Integer studentId) {
+        try {
+            boolean admin = this.userUtils.hasRole("ROLE_admin");
+            boolean instructor = this.userUtils.hasRole("ROLE_instructor");
+            if (studentId == null || (!admin && !instructor)) return false;
+            Student student = this.studentRepository.findById(studentId).orElse(null);
+            if (student == null) return false;
+            return (admin && this.courseSecurityService.isCourseOwner(student.getSection().getCourse().getCourseId()))
+                    || (instructor && isCurrentUserInstructorOfStudentSection(studentId));
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     public boolean isStudentSelf(Integer studentId) {

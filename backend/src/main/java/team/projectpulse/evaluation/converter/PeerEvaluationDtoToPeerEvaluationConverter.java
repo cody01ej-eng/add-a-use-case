@@ -33,6 +33,14 @@ public class PeerEvaluationDtoToPeerEvaluationConverter implements Converter<Pee
 
     @Override
     public PeerEvaluation convert(PeerEvaluationDto peerEvaluationDto) {
+        return convert(peerEvaluationDto, true);
+    }
+
+    public PeerEvaluation convertForUpdate(PeerEvaluationDto peerEvaluationDto) {
+        return convert(peerEvaluationDto, false);
+    }
+
+    private PeerEvaluation convert(PeerEvaluationDto peerEvaluationDto, boolean resolveTarget) {
         // Get the evaluator or evaluation submitter ID from the JWT token
         Integer evaluatorId = this.userUtils.getUserId();
 
@@ -41,7 +49,12 @@ public class PeerEvaluationDtoToPeerEvaluationConverter implements Converter<Pee
         // (BR-team-assignment-required). Say that, rather than reporting the caller's own id as a missing student.
         Student evaluator = this.studentRepository.findById(evaluatorId)
                 .orElseThrow(() -> new PeerEvaluationIllegalArgumentException("Only a student may submit a peer evaluation."));
-        Student evaluatee = this.studentRepository.findById(peerEvaluationDto.evaluateeId()).orElseThrow(() -> new ObjectNotFoundException("student", peerEvaluationDto.evaluateeId()));
+        if (evaluator.getTeam() == null) {
+            throw new PeerEvaluationIllegalArgumentException("You must be assigned to a team before submitting a peer evaluation.");
+        }
+        Student evaluatee = resolveTarget ? this.studentRepository.findByIdAndTeamTeamId(
+                peerEvaluationDto.evaluateeId(), evaluator.getTeam().getTeamId())
+                .orElseThrow(() -> new ObjectNotFoundException("student", peerEvaluationDto.evaluateeId())) : null;
 
         // Convert the list of ratingDtos to a list of ratings
         List<Rating> ratings = peerEvaluationDto.ratings().stream()
