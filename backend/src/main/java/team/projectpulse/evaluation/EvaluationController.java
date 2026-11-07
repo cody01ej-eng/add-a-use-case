@@ -44,7 +44,7 @@ public class EvaluationController {
 
     @PutMapping("/{evaluationId}")
     public Result updatePeerEvaluation(@PathVariable Integer evaluationId, @Valid @RequestBody PeerEvaluationDto peerEvaluationDto) {
-        PeerEvaluation update = this.peerEvaluationDtoToPeerEvaluationConverter.convert(peerEvaluationDto);
+        PeerEvaluation update = this.peerEvaluationDtoToPeerEvaluationConverter.convertForUpdate(peerEvaluationDto);
         PeerEvaluation updatedPeerEvaluation = this.evaluationService.updatePeerEvaluation(evaluationId, update);
         PeerEvaluationDto updatedPeerEvaluationDto = this.peerEvaluationToPeerEvaluationDtoConverter.convert(updatedPeerEvaluation);
         return new Result(true, StatusCode.SUCCESS, "Update peer evaluation successfully", updatedPeerEvaluationDto);

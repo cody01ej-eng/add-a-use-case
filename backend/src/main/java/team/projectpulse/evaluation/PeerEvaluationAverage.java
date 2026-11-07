@@ -5,6 +5,7 @@ import java.util.List;
 public class PeerEvaluationAverage {
 
     private Integer studentId;
+    private boolean enabled;
     private String week;
     private String firstName;
     private String lastName;
@@ -18,6 +19,10 @@ public class PeerEvaluationAverage {
 
     public PeerEvaluationAverage() {
     }
+
+    public boolean isEnabled() { return enabled; }
+
+    public void setEnabled(boolean enabled) { this.enabled = enabled; }
 
     public Integer getStudentId() {
         return studentId;

@@ -43,6 +43,7 @@ export interface UpdatePeerEvaluationResponse {
 
 export interface PeerEvaluationAverage {
   studentId: number
+  enabled: boolean
   week: string
   firstName: string
   lastName: string

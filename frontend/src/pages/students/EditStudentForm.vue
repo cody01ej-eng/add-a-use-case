@@ -14,7 +14,9 @@
       <el-input v-model="studentBeingEdited.username"></el-input>
     </el-form-item>
     <el-form-item label="Status:" prop="enabled">
+      <el-tag v-if="initiallyEnabled" type="success">Enabled</el-tag>
       <el-switch
+        v-else
         v-model="studentBeingEdited.enabled"
         inline-prompt
         active-text="Enabled"
@@ -63,6 +65,7 @@ const studentBeingEdited = ref<Student>({
 })
 
 const studentForm = ref<FormInstance>() // Form reference
+const initiallyEnabled = ref(true)
 
 // Validation rules
 const rules = {
@@ -94,6 +97,7 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.id = result.data.id as number
   studentBeingEdited.value.username = result.data.username
   studentBeingEdited.value.enabled = result.data.enabled
+  initiallyEnabled.value = result.data.enabled === true
   studentBeingEdited.value.firstName = result.data.firstName
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email

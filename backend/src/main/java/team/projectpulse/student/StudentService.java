@@ -104,9 +104,24 @@ public class StudentService {
         return savedStudent;
     }
 
+    public StudentDeactivationResult deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findForLifecycle(studentId, this.userUtils.getUserId())
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+        boolean changed = student.isEnabled();
+        if (changed) {
+            student.setEnabled(false);
+            this.studentRepository.save(student);
+        }
+        return new StudentDeactivationResult(student, changed);
+    }
+
     public Student updateStudent(Integer studentId, Student update) {
         Student oldStudent = this.studentRepository.findById(studentId)
                 .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+
+        if (oldStudent.isEnabled() && !update.isEnabled()) {
+            throw new IllegalArgumentException("Use the dedicated deactivation action.");
+        }
 
         // If the user is not an admin, then the user can only update her username, first rubricName, last rubricName, and email
         oldStudent.setUsername(update.getUsername());

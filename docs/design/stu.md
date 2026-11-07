@@ -18,7 +18,8 @@ Paths below are relative to the repository root; existing files are revised rath
 | `frontend/src/pages/students/Students.vue` | Reuse | Dedicated action, named-student warning, confirmation/cancellation, success feedback, refresh |
 | `frontend/src/pages/students/EditStudentForm.vue` | Reuse | Active accounts have read-only status; generic profile editing cannot deactivate |
 | `frontend/src/apis/student/index.ts` | Reuse | Dedicated request using the existing shared request client |
-| `student/StudentController.java`, `student/StudentService.java` | Reuse | Endpoint and transactional `deactivateStudent(Integer studentId)` returning the current Student |
+| `student/StudentController.java`, `student/StudentService.java` | Reuse | Endpoint and transactional `deactivateStudent(Integer studentId)` returning `StudentDeactivationResult(Student student, boolean changed)` |
+| `student/StudentDeactivationResult.java` | New | Carry the current student and changed flag so the controller distinguishes a harmless repeat |
 | `student/StudentRepository.java`, `student/Student.java` | Reuse | Existing account persistence and team relationship |
 | `student/StudentSecurityService.java` | Reuse | Target-specific lifecycle predicate; do not change unrelated authorization predicates |
 | `security/authorizationmanagers/StudentLifecycleAuthorizationManager.java` | New | Read the bound studentId and require an owning course admin or assigned course-section instructor |
@@ -31,6 +32,19 @@ Paths below are relative to the repository root; existing files are revised rath
 | `frontend/src/pages/evaluations/admin/SectionsEvaluations.vue` | Reuse | Show the Inactive label beside the included student's name |
 
 Backend paths in the table begin at `backend/src/main/java/team/projectpulse/`.
+
+## Implemented class relationships
+
+```mermaid
+classDiagram
+    StudentController --> StudentService
+    StudentService --> StudentRepository
+    StudentService --> StudentDeactivationResult
+    StudentLifecycleAuthorizationManager --> StudentSecurityService
+    SecurityConfiguration --> ActiveAccountValidator
+```
+
+The evaluation converter uses the caller's team for create lookup and `convertForUpdate` defers target identity to the stored evaluation. `peerEvaluationRows.ts` is a pure active-roster projection shared by initial loading and failure refresh; Node tests supplement the planned Cypress contracts. There is no schema change.
 
 ## Sequence
 
@@ -144,3 +158,7 @@ These rows are obligations for implementation, not claims that tests already exi
 ## Review boundaries
 
 Calendar-week validation remains owned by the existing evaluation service and injected Clock. Token validation retains real-time expiry. Deactivation is not deletion and never revokes access by removing team membership. No native builds, deployment, or new GitHub Actions are added. For any remaining contradiction, stop and settle it in the specification/design before implementing. The build PR must distinguish tests actually run from planned or blocked tests and contain the student's own review.
+
+## Build verification status
+
+See [deactivation-verification.md](deactivation-verification.md) for the row-by-row evidence and gaps. Build is implemented; Verify remains Partial. The database-dependent and browser scenarios are not claimed passed.
