@@ -1479,10 +1479,11 @@ Details:
   3. Use case ends.
 **Priority:** Low
 **Frequency of Use:** Rare. Occurs occasionally when a student withdraws from a course section.
-**Business Rules:** BR-student-lifecycle, BR-active-peer-evaluatee
+**Business Rules:** BR-student-lifecycle, BR-active-peer-evaluatee, BR-inactive-student-reporting
 
 **Associated Information:**
 - Consequence of the deactivation: The student will no longer be able to log in or submit weekly activity reports and peer evaluations, but the student's account and her previously submitted work are kept in the system. Deactivation will NOT remove the student from the system, and the account can be reactivated in the future (UC-STU-reactivate-student: Reactivate a student). This is distinct from deletion (UC-STU-delete-student: Delete a student), which is a physical, unrecoverable delete. The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
+- The confirmation warning explains the consequences governed by BR-student-lifecycle, BR-active-peer-evaluatee, BR-inactive-student-reporting, and BR-submission-owed.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-reactivate-student: Reactivate a student
 **Assumptions:**
@@ -2352,7 +2353,7 @@ Report generating algorithm: For each individual criterion score (e.g., Quality 
 
 **Priority:** High
 **Frequency of Use:** Approximately 2 users, average of 1 usage per week.
-**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation)
+**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation), BR-inactive-student-reporting
 
 **Associated Information:**
 
@@ -2362,6 +2363,7 @@ Report generating parameters:
 - Sorting criteria: by default, sort by last name in ascending order.
 - Pagination: Not needed.
 - Format of the generated report: HTML.
+- Student inclusion and inactive-account labeling: Governed by BR-inactive-student-reporting.
 
 An example of the generated report:
 
